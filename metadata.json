@@ -1,0 +1,6 @@
+{
+  "name": "Blink",
+  "description": "Get reminded to blink",
+  "uuid": "blink@sb93",
+  "shell-version": ["49"]
+}
