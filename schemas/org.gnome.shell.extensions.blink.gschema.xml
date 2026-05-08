@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.blink" path="/org/gnome/shell/extensions/blink/">
+    <key name="show-icon" type="b">
+      <default>true</default>
+      <summary>Show system status icon</summary>
+      <description>Whether the extension indicator is shown in the top panel.</description>
+    </key>
+
+    <key name="icon-position" type="s">
+      <default>'right'</default>
+      <summary>Panel position for system status icon</summary>
+      <description>Controls where the indicator appears in the panel: left, center, or right.</description>
+    </key>
+
+    <key name="icon-index" type="i">
+      <range min="-50" max="50"/>
+      <default>0</default>
+      <summary>Index within selected panel group</summary>
+      <description>
+        Sets the indicator position within the selected panel group. Negative values push further toward
+        the start of the group, 0 is the default start, and positive values move forward.
+      </description>
+    </key>
+  </schema>
+</schemalist>

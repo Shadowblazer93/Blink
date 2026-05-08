@@ -2,5 +2,7 @@
   "name": "Blink",
   "description": "Get reminded to blink",
   "uuid": "blink@sb93",
-  "shell-version": ["49"]
+  "settings-schema": "org.gnome.shell.extensions.blink",
+  "shell-version": ["49"],
+  "url": "https://github.com/Shadowblazer93/blink"
 }

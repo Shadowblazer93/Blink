@@ -27,17 +27,18 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
-    _init() {
+    _init(onShowSettings) {
         super._init(0.0, _('My Shiny Indicator'));
 
         this.add_child(new St.Icon({
-            icon_name: 'face-smile-symbolic',
+            icon_name: 'document-open-recent-symbolic',
             style_class: 'system-status-icon',
         }));
 
-        let item = new PopupMenu.PopupMenuItem(_('Show Notification'));
+        let item = new PopupMenu.PopupMenuItem(_('Show Settings'));
         item.connect('activate', () => {
-            Main.notify(_('What\'s up, folks?'));
+            if (onShowSettings)
+                onShowSettings();
         });
         this.menu.addMenuItem(item);
     }
@@ -45,12 +46,65 @@ class Indicator extends PanelMenu.Button {
 
 export default class IndicatorExampleExtension extends Extension {
     enable() {
-        this._indicator = new Indicator();
-        Main.panel.addToStatusArea(this.uuid, this._indicator);
+        this._settings = this.getSettings();
+        this._settingsSignals = [
+            this._settings.connect('changed::show-icon', () => this._syncIndicator()),
+            this._settings.connect('changed::icon-position', () => this._syncIndicator()),
+            this._settings.connect('changed::icon-index', () => this._syncIndicator()),
+        ];
+
+        this._indicator = null;
+        this._position = null;
+        this._positionIndex = null;
+        this._syncIndicator();
     }
 
     disable() {
-        this._indicator.destroy();
-        this._indicator = null;
+        if (this._settingsSignals) {
+            for (const signalId of this._settingsSignals)
+                this._settings.disconnect(signalId);
+            this._settingsSignals = null;
+        }
+
+        if (this._indicator) {
+            this._indicator.destroy();
+            this._indicator = null;
+        }
+
+        this._settings = null;
+        this._position = null;
+        this._positionIndex = null;
+    }
+
+    _syncIndicator() {
+        const showIcon = this._settings.get_boolean('show-icon');
+
+        if (!showIcon) {
+            if (this._indicator) {
+                this._indicator.destroy();
+                this._indicator = null;
+            }
+            this._position = null;
+            this._positionIndex = null;
+            return;
+        }
+
+        let position = this._settings.get_string('icon-position');
+        if (!['left', 'center', 'right'].includes(position))
+            position = 'right';
+
+        let positionIndex = this._settings.get_int('icon-index');
+
+        if (this._indicator && (this._position !== position || this._positionIndex !== positionIndex)) {
+            this._indicator.destroy();
+            this._indicator = null;
+        }
+
+        if (!this._indicator) {
+            this._indicator = new Indicator(() => this.openPreferences());
+            Main.panel.addToStatusArea(this.uuid, this._indicator, positionIndex, position);
+            this._position = position;
+            this._positionIndex = positionIndex;
+        }
     }
 }
