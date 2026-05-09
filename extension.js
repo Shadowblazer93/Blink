@@ -19,6 +19,7 @@
 import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import Clutter from 'gi://Clutter';
 import GdkPixbuf from 'gi://GdkPixbuf';
 import St from 'gi://St';
 
@@ -70,6 +71,9 @@ export default class IndicatorExampleExtension extends Extension {
             this._settings.connect('changed::show-icon', () => this._syncIndicator()),
             this._settings.connect('changed::icon-position', () => this._syncIndicator()),
             this._settings.connect('changed::icon-index', () => this._syncIndicator()),
+            this._settings.connect('changed::blink-interval', () => this._restartReminderCycle()),
+            this._settings.connect('changed::animation-duration', () => this._restartReminderCycle()),
+            this._settings.connect('changed::fade-duration', () => this._restartReminderCycle()),
         ];
 
         this._indicator = null;
@@ -93,6 +97,7 @@ export default class IndicatorExampleExtension extends Extension {
         }
 
         this._destroyOverlay();
+        this._stopReminderCycle();
 
         this._settings = null;
         this._position = null;
@@ -104,12 +109,117 @@ export default class IndicatorExampleExtension extends Extension {
             return;
 
         if (this._settings.get_boolean('reminder-enabled')) {
-            if (!this._overlayActor)
-                this._createOverlay();
-            this._applyReminderOpacity();
+            this._startReminderCycle();
         } else {
+            this._stopReminderCycle();
             this._destroyOverlay();
         }
+    }
+
+    _restartReminderCycle() {
+        if (!this._settings || !this._settings.get_boolean('reminder-enabled'))
+            return;
+
+        this._stopReminderCycle();
+        this._startReminderCycle();
+    }
+
+    _clearReminderTransitions() {
+        if (this._overlayActor && this._overlayActor.remove_all_transitions)
+            this._overlayActor.remove_all_transitions();
+    }
+
+    _startReminderCycle() {
+        if (!this._settings)
+            return;
+
+        if (!this._overlayActor)
+            this._createOverlay();
+
+        const visibleMs = Math.max(500, Math.round(this._settings.get_double('animation-duration') * 1000));
+        const delayMs = Math.max(100, Math.round(this._settings.get_double('blink-interval') * 1000));
+        const fadeMs = Math.max(0, Math.round(this._settings.get_double('fade-duration') * 1000));
+        const targetOpacity = Math.round(Math.max(0, Math.min(100, this._settings.get_int('reminder-opacity'))) * 2.55);
+        const actualFadeMs = Math.min(fadeMs, Math.floor(visibleMs / 2));
+
+        if (this._cycleTimeoutId)
+            GLib.Source.remove(this._cycleTimeoutId);
+
+        this._clearReminderTransitions();
+        this._overlayActor.opacity = 0;
+        this._overlayActor.show();
+        Main.uiGroup.set_child_above_sibling(this._overlayActor, null);
+
+        const onFadeInComplete = () => {
+            const holdMs = Math.max(0, visibleMs - (actualFadeMs * 2));
+
+            this._cycleTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, holdMs, () => {
+                this._fadeOutReminderOverlay(targetOpacity, actualFadeMs, delayMs);
+                return GLib.SOURCE_REMOVE;
+            });
+        };
+
+        this._fadeInReminderOverlay(targetOpacity, actualFadeMs, onFadeInComplete);
+    }
+
+    _stopReminderCycle() {
+        if (this._cycleTimeoutId) {
+            GLib.Source.remove(this._cycleTimeoutId);
+            this._cycleTimeoutId = 0;
+        }
+
+        this._clearReminderTransitions();
+    }
+
+    _fadeInReminderOverlay(targetOpacity, fadeMs, onComplete) {
+        if (!this._overlayActor)
+            return;
+
+        if (!fadeMs) {
+            this._overlayActor.opacity = targetOpacity;
+            if (onComplete)
+                onComplete();
+            return;
+        }
+
+        this._clearReminderTransitions();
+        this._overlayActor.ease({
+            opacity: targetOpacity,
+            duration: fadeMs,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            onComplete: () => {
+                if (onComplete)
+                    onComplete();
+            },
+        });
+    }
+
+    _fadeOutReminderOverlay(targetOpacity, fadeMs, delayMs) {
+        if (!this._overlayActor)
+            return;
+
+        const finish = () => {
+            this._overlayActor.hide();
+            this._overlayActor.opacity = targetOpacity;
+            this._cycleTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delayMs, () => {
+                this._cycleTimeoutId = 0;
+                this._startReminderCycle();
+                return GLib.SOURCE_REMOVE;
+            });
+        };
+
+        if (!fadeMs) {
+            finish();
+            return;
+        }
+
+        this._clearReminderTransitions();
+        this._overlayActor.ease({
+            opacity: 0,
+            duration: fadeMs,
+            mode: Clutter.AnimationMode.EASE_IN_QUAD,
+            onComplete: finish,
+        });
     }
 
     _applyReminderOpacity() {
@@ -174,6 +284,7 @@ export default class IndicatorExampleExtension extends Extension {
         }
 
         this._applyReminderOpacity();
+    this._overlayActor.hide();
 
         Main.uiGroup.add_child(this._overlayActor);
         Main.uiGroup.set_child_above_sibling(this._overlayActor, null);

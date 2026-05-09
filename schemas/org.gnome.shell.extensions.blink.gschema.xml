@@ -31,9 +31,27 @@
 
     <key name="reminder-opacity" type="i">
       <range min="0" max="100"/>
-      <default>100</default>
+      <default>50</default>
       <summary>Opacity of blink reminder overlay</summary>
       <description>Controls how transparent the blink reminder overlay appears, from 0 to 100 percent.</description>
+    </key>
+
+    <key name="blink-interval" type="d">
+      <default>5.0</default>
+      <summary>Blink interval</summary>
+      <description>How long to wait after the reminder disappears before showing it again.</description>
+    </key>
+
+    <key name="animation-duration" type="d">
+      <default>3.0</default>
+      <summary>Animation duration</summary>
+      <description>How long the reminder stays visible each time it appears.</description>
+    </key>
+
+    <key name="fade-duration" type="d">
+      <default>0.2</default>
+      <summary>Fade duration</summary>
+      <description>How long the reminder takes to fade in and fade out.</description>
     </key>
   </schema>
 </schemalist>
