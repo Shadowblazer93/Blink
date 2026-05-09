@@ -22,5 +22,18 @@
         the start of the group, 0 is the default start, and positive values move forward.
       </description>
     </key>
+
+    <key name="reminder-enabled" type="b">
+      <default>true</default>
+      <summary>Enable blink reminder overlay</summary>
+      <description>Controls whether the on-screen blink reminder overlay is shown.</description>
+    </key>
+
+    <key name="reminder-opacity" type="i">
+      <range min="0" max="100"/>
+      <default>100</default>
+      <summary>Opacity of blink reminder overlay</summary>
+      <description>Controls how transparent the blink reminder overlay appears, from 0 to 100 percent.</description>
+    </key>
   </schema>
 </schemalist>
