@@ -53,5 +53,11 @@
       <summary>Fade duration</summary>
       <description>How long the reminder takes to fade in and fade out.</description>
     </key>
+
+    <key name="eye-type" type="s">
+      <default>'eye_1'</default>
+      <summary>Eye animation type</summary>
+      <description>Which eye animation to use for the blink reminder overlay.</description>
+    </key>
   </schema>
 </schemalist>

@@ -65,6 +65,8 @@ export default class IndicatorExampleExtension extends Extension {
 
     enable() {
         this._settings = this.getSettings();
+        this._previewActive = false;  // Track if preview is active
+        this._cycleWasPaused = false;  // Track pause state for resume
         this._settingsSignals = [
             this._settings.connect('changed::reminder-enabled', () => this._syncReminderOverlay()),
             this._settings.connect('changed::reminder-opacity', () => this._applyReminderOpacity()),
@@ -74,6 +76,13 @@ export default class IndicatorExampleExtension extends Extension {
             this._settings.connect('changed::blink-interval', () => this._restartReminderCycle()),
             this._settings.connect('changed::animation-duration', () => this._restartReminderCycle()),
             this._settings.connect('changed::fade-duration', () => this._restartReminderCycle()),
+            this._settings.connect('changed::eye-type', () => {
+                // Destroy and recreate overlay when eye type changes
+                if (this._settings.get_boolean('reminder-enabled')) {
+                    this._destroyOverlay();
+                    this._restartReminderCycle();
+                }
+            }),
         ];
 
         this._indicator = null;
@@ -240,7 +249,8 @@ export default class IndicatorExampleExtension extends Extension {
         // Start player process for reliable animated overlay (prefer mpv)
         try {
             const script = `${this.path}/scripts/overlay_player.py`;
-            const gif = `${this.path}/icons/eye_1.gif`;
+            const eyeType = this._settings ? this._settings.get_string('eye-type') : 'eye_1';
+            const gif = `${this.path}/icons/${eyeType}.gif`;
             if (Gio.File.new_for_path(gif).query_exists(null)) {
                 try {
                     const mpvPath = GLib.find_program_in_path('mpv');
@@ -269,7 +279,8 @@ export default class IndicatorExampleExtension extends Extension {
             logError(e, `${this.uuid}: error starting player`);
         }
 
-        const gifPath = `${this.path}/icons/eye_1.gif`;
+        const eyeType = this._settings ? this._settings.get_string('eye-type') : 'eye_1';
+        const gifPath = `${this.path}/icons/${eyeType}.gif`;
         const gifFile = Gio.File.new_for_path(gifPath);
 
         if (gifFile.query_exists(null) && this._createAnimatedGifOverlay(gifPath)) {
@@ -299,7 +310,6 @@ export default class IndicatorExampleExtension extends Extension {
 
     _createAnimatedGifOverlay(gifPath) {
         try {
-            try { Main.notify(`${this.uuid}: trying animated overlay ${gifPath}`); } catch(e) { logError(e, `${this.uuid}: notify failed`); }
             this._writeDebug(`trying animated overlay ${gifPath}`);
             this._gifAnimation = GdkPixbuf.PixbufAnimation.new_from_file(gifPath);
             this._gifIter = this._gifAnimation.get_iter(null);
@@ -430,6 +440,25 @@ export default class IndicatorExampleExtension extends Extension {
             Main.uiGroup.set_child_above_sibling(this._overlayActor, null);
         } catch (e) {
             logError(e, `${this.uuid}: failed to position overlay`);
+        }
+    }
+
+    _pauseReminderCycle() {
+        // Pause the reminder cycle when preview is active
+        if (this._cycleTimeoutId || this._gifTimeoutId) {
+            this._cycleWasPaused = true;
+            this._stopReminderCycle();
+            if (this._overlayActor)
+                this._overlayActor.hide();
+        } else {
+            this._cycleWasPaused = false;
+        }
+    }
+
+    _resumeReminderCycle() {
+        // Resume the reminder cycle when preview closes
+        if (this._cycleWasPaused && this._settings && this._settings.get_boolean('reminder-enabled')) {
+            this._startReminderCycle();
         }
     }
 
