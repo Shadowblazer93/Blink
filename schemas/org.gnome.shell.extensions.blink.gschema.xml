@@ -31,13 +31,13 @@
 
     <key name="reminder-opacity" type="i">
       <range min="0" max="100"/>
-      <default>50</default>
+      <default>30</default>
       <summary>Opacity of blink reminder overlay</summary>
       <description>Controls how transparent the blink reminder overlay appears, from 0 to 100 percent.</description>
     </key>
 
     <key name="blink-interval" type="d">
-      <default>5.0</default>
+      <default>10.0</default>
       <summary>Blink interval</summary>
       <description>How long to wait after the reminder disappears before showing it again.</description>
     </key>
