@@ -28,12 +28,13 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 
 const OVERLAY_MAX_SIZE = 160;
 
 const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
-    _init(onShowSettings) {
+    _init(settings, onShowSettings) {
         super._init(0.0, _('My Shiny Indicator'));
 
         this.add_child(new St.Icon({
@@ -41,6 +42,26 @@ class Indicator extends PanelMenu.Button {
             style_class: 'system-status-icon',
         }));
 
+        // Toggle Blink Overlay button
+        const toggleBlinkItem = new PopupMenu.PopupMenuItem(_('Toggle Blink Overlay'));
+        toggleBlinkItem.connect('activate', () => {
+            const current = settings.get_boolean('reminder-enabled');
+            settings.set_boolean('reminder-enabled', !current);
+        });
+        this.menu.addMenuItem(toggleBlinkItem);
+
+        // Toggle Notification Reminder button
+        const toggleNotificationItem = new PopupMenu.PopupMenuItem(_('Toggle Notification Reminder'));
+        toggleNotificationItem.connect('activate', () => {
+            const current = settings.get_boolean('notification-enabled');
+            settings.set_boolean('notification-enabled', !current);
+        });
+        this.menu.addMenuItem(toggleNotificationItem);
+
+        // Separator
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        // Show Settings button
         let item = new PopupMenu.PopupMenuItem(_('Show Settings'));
         item.connect('activate', () => {
             if (onShowSettings)
@@ -83,14 +104,20 @@ export default class IndicatorExampleExtension extends Extension {
                     this._restartReminderCycle();
                 }
             }),
+            this._settings.connect('changed::notification-enabled', () => this._syncNotificationSystem()),
+            this._settings.connect('changed::notification-interval', () => this._restartNotificationCycle()),
         ];
 
         this._indicator = null;
         this._position = null;
         this._positionIndex = null;
 
+        this._notificationTimeoutId = 0;
+        this._notificationSource = null;
+
         this._syncReminderOverlay();
         this._syncIndicator();
+        this._syncNotificationSystem();
     }
 
     disable() {
@@ -103,6 +130,12 @@ export default class IndicatorExampleExtension extends Extension {
         if (this._indicator) {
             this._indicator.destroy();
             this._indicator = null;
+        this._stopNotificationCycle();
+
+        if (this._notificationSource) {
+            this._notificationSource.destroy();
+            this._notificationSource = null;
+        }
         }
 
         this._destroyOverlay();
@@ -462,6 +495,85 @@ export default class IndicatorExampleExtension extends Extension {
         }
     }
 
+    _syncNotificationSystem() {
+        if (!this._settings)
+            return;
+
+        if (this._settings.get_boolean('notification-enabled')) {
+            this._startNotificationCycle();
+        } else {
+            this._stopNotificationCycle();
+        }
+    }
+
+    _restartNotificationCycle() {
+        if (!this._settings || !this._settings.get_boolean('notification-enabled'))
+            return;
+
+        this._stopNotificationCycle();
+        this._startNotificationCycle();
+    }
+
+    _startNotificationCycle() {
+        if (!this._settings)
+            return;
+
+        if (this._notificationTimeoutId)
+            GLib.Source.remove(this._notificationTimeoutId);
+
+        const intervalMinutes = this._settings.get_double('notification-interval');
+        const intervalMs = Math.max(1000, Math.round(intervalMinutes * 60 * 1000));
+
+        this._notificationTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, intervalMs, () => {
+            this._sendNotification();
+            // Reschedule the next notification
+            this._notificationTimeoutId = 0;
+            this._startNotificationCycle();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _stopNotificationCycle() {
+        if (this._notificationTimeoutId) {
+            GLib.Source.remove(this._notificationTimeoutId);
+            this._notificationTimeoutId = 0;
+        }
+    }
+
+    _sendNotification() {
+        try {
+            const title = _('Take a Break');
+            const body = _('20-20-20 Rule: Look at least 20 feet away for 20 seconds');
+
+            // Try to use notify-send for consistency with test notification
+            const notifySend = GLib.find_program_in_path('notify-send');
+            if (notifySend) {
+                try {
+                    GLib.spawn_async(
+                        null,
+                        [notifySend, '-a', 'BLINK', title, body],
+                        null,
+                        GLib.SpawnFlags.DEFAULT,
+                        null
+                    );
+                } catch (e) {
+                    // Fallback to Main.notify if spawn fails
+                    Main.notify(title, body);
+                }
+            } else {
+                // Fallback to Main.notify if notify-send not available
+                Main.notify(title, body);
+            }
+        } catch (e) {
+            logError(e, `${this.uuid}: failed to send notification`);
+        }
+    }
+
+    _sendTestNotification() {
+        // Send a test notification immediately
+        this._sendNotification();
+    }
+
     _syncIndicator() {
         const showIcon = this._settings.get_boolean('show-icon');
 
@@ -487,7 +599,7 @@ export default class IndicatorExampleExtension extends Extension {
         }
 
         if (!this._indicator) {
-            this._indicator = new Indicator(() => this.openPreferences());
+            this._indicator = new Indicator(this._settings, () => this.openPreferences());
             Main.panel.addToStatusArea(this.uuid, this._indicator, positionIndex, position);
             this._position = position;
             this._positionIndex = positionIndex;

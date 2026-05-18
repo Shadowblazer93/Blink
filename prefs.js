@@ -375,6 +375,195 @@ export default class BlinkPreferences extends ExtensionPreferences {
                 settings.set_double('fade-duration', value);
         });
 
+        const notificationPage = new Adw.PreferencesPage({
+            title: _('Notification'),
+            icon_name: 'mail-unread-symbolic',
+        });
+
+        const notificationGroup = new Adw.PreferencesGroup({
+            title: _('Notification Reminder'),
+            description: _('Configure GNOME notifications to remind you to take screen breaks.'),
+        });
+
+        const notificationEnabledRow = new Adw.SwitchRow({
+            title: _('Enable notification reminder'),
+            subtitle: _('Send periodic notifications reminding you to look away from the screen.'),
+        });
+        settings.bind('notification-enabled', notificationEnabledRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+
+        const notificationIntervalRow = new Adw.ActionRow({
+            title: _('Notification interval'),
+            subtitle: _('How often to send the reminder notification (in minutes).'),
+        });
+
+        const notificationIntervalAdjustment = new Gtk.Adjustment({
+            lower: 1.0,
+            upper: 120.0,
+            step_increment: 1.0,
+            page_increment: 5.0,
+            value: settings.get_double('notification-interval'),
+        });
+
+        const notificationIntervalSpin = new Gtk.SpinButton({
+            numeric: true,
+            climb_rate: 1,
+            digits: 0,
+            adjustment: notificationIntervalAdjustment,
+            width_request: 80,
+        });
+        notificationIntervalRow.add_suffix(notificationIntervalSpin);
+
+        const testNotificationRow = new Adw.ActionRow({
+            title: _('Test notification'),
+        });
+
+        const testNotificationContent = new Gtk.Box({
+            orientation: Gtk.Orientation.HORIZONTAL,
+            spacing: 6,
+            valign: Gtk.Align.CENTER,
+        });
+
+        testNotificationContent.append(new Gtk.Image({
+            icon_name: 'mail-unread-symbolic',
+            valign: Gtk.Align.CENTER,
+        }));
+        testNotificationContent.append(new Gtk.Label({
+            label: _('Send Test Notification'),
+            valign: Gtk.Align.CENTER,
+        }));
+
+        const testNotificationButton = new Gtk.Button({
+            child: testNotificationContent,
+            halign: Gtk.Align.END,
+            valign: Gtk.Align.CENTER,
+            height_request: 32,
+        });
+        testNotificationButton.add_css_class('suggested-action');
+        testNotificationRow.add_suffix(testNotificationButton);
+        testNotificationRow.activatable_widget = testNotificationButton;
+
+        const notificationResetRow = new Adw.ActionRow({
+            title: _('Reset settings'),
+        });
+
+        const notificationResetContent = new Gtk.Box({
+            orientation: Gtk.Orientation.HORIZONTAL,
+            spacing: 6,
+            valign: Gtk.Align.CENTER,
+        });
+
+        notificationResetContent.append(new Gtk.Image({
+            icon_name: 'edit-undo-symbolic',
+            valign: Gtk.Align.CENTER,
+        }));
+        notificationResetContent.append(new Gtk.Label({
+            label: _('Reset to Defaults'),
+            valign: Gtk.Align.CENTER,
+        }));
+
+        const notificationResetButton = new Gtk.Button({
+            child: notificationResetContent,
+            halign: Gtk.Align.END,
+            valign: Gtk.Align.CENTER,
+            height_request: 32,
+        });
+        notificationResetButton.add_css_class('destructive-action');
+        notificationResetRow.add_suffix(notificationResetButton);
+        notificationResetRow.activatable_widget = notificationResetButton;
+
+        notificationResetButton.connect('clicked', () => {
+            for (const key of [
+                'notification-enabled',
+                'notification-interval',
+            ]) {
+                settings.reset(key);
+            }
+        });
+
+        const settingsNotificationIntervalChangedId = settings.connect('changed::notification-interval', () => {
+            const value = settings.get_double('notification-interval');
+            if (Math.abs(notificationIntervalSpin.get_value() - value) > 0.001)
+                notificationIntervalSpin.set_value(value);
+        });
+
+        const notificationIntervalSpinValueChangedId = notificationIntervalSpin.connect('value-changed', () => {
+            const value = notificationIntervalSpin.get_value_as_int();
+                settings.set_double('notification-interval', value);
+        });
+
+        const testNotificationClickedId = testNotificationButton.connect('clicked', () => {
+            try {
+                // Try to use notify-send if available
+                const notifySend = GLib.find_program_in_path('notify-send');
+                if (notifySend) {
+                    GLib.spawn_async(
+                        null,
+                        [notifySend, '-a', 'BLINK', _('Take a Break'), _('20-20-20 Rule: Look at least 20 feet away for 20 seconds')],
+                        null,
+                        GLib.SpawnFlags.DEFAULT,
+                        null
+                    );
+                } else {
+                    // Fallback: try to call extension method
+                    const ext = this.get_extension();
+                    if (ext && ext._sendTestNotification && typeof ext._sendTestNotification === 'function') {
+                        ext._sendTestNotification();
+                    } else {
+                        console.log('notify-send not found and extension method not available');
+                    }
+                }
+            } catch (e) {
+                logError(e, 'Failed to send test notification');
+            }
+        });
+
+        notificationGroup.add(notificationEnabledRow);
+        notificationGroup.add(notificationIntervalRow);
+        notificationGroup.add(testNotificationRow);
+        notificationGroup.add(notificationResetRow);
+        notificationPage.add(notificationGroup);
+
+        const nextNotificationLabel = new Gtk.Label({
+            label: '',
+            xalign: 0,
+            wrap: true,
+            margin_top: 12,
+            margin_bottom: 12,
+            margin_start: 12,
+            margin_end: 12,
+        });
+        nextNotificationLabel.add_css_class('dim-label');
+        
+        const nextNotificationGroup = new Adw.PreferencesGroup();
+        nextNotificationGroup.add(nextNotificationLabel);
+        notificationPage.add(nextNotificationGroup);
+
+        const updateNextNotificationTime = () => {
+            if (!settings.get_boolean('notification-enabled')) {
+                nextNotificationLabel.set_label(_('Notifications are disabled'));
+            } else {
+                const now = new Date();
+                const intervalMinutes = Math.round(settings.get_double('notification-interval'));
+                const nextTime = new Date(now.getTime() + intervalMinutes * 60 * 1000);
+                const timeStr = nextTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                nextNotificationLabel.set_label(_(`Next notification at ${timeStr}`));
+            }
+        };
+
+        updateNextNotificationTime();
+
+        const notificationEnabledChangedId = settings.connect('changed::notification-enabled', () => {
+            updateNextNotificationTime();
+        });
+
+        const settingsNotificationIntervalChangedId2 = settings.connect('changed::notification-interval', () => {
+            updateNextNotificationTime();
+        });
+
+        const notificationIntervalSpinValueChangedId2 = notificationIntervalSpin.connect('value-changed', () => {
+            updateNextNotificationTime();
+        });
+
         window.connect('close-request', () => {
             // Resume real overlay
             try {
@@ -395,11 +584,17 @@ export default class BlinkPreferences extends ExtensionPreferences {
             settings.disconnect(settingsFadeDurationChangedId);
             settings.disconnect(settingsEyeTypeChangedId);
             eyeTypeRow.disconnect(eyeTypeRowNotifyId);
+            settings.disconnect(settingsNotificationIntervalChangedId);
+            settings.disconnect(notificationEnabledChangedId);
+            settings.disconnect(settingsNotificationIntervalChangedId2);
             indexSpin.disconnect(spinValueChangedId);
             opacityScale.disconnect(opacityValueChangedId);
             blinkIntervalScale.disconnect(blinkIntervalValueChangedId);
             animationDurationScale.disconnect(animationDurationValueChangedId);
             fadeDurationScale.disconnect(fadeDurationValueChangedId);
+            notificationIntervalSpin.disconnect(notificationIntervalSpinValueChangedId);
+            notificationIntervalSpin.disconnect(notificationIntervalSpinValueChangedId2);
+            testNotificationButton.disconnect(testNotificationClickedId);
             return false;
         });
 
@@ -429,5 +624,6 @@ export default class BlinkPreferences extends ExtensionPreferences {
 
         window.add(generalPage);
         window.add(reminderPage);
+        window.add(notificationPage);
     }
 }

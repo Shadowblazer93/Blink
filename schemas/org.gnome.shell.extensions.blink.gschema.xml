@@ -59,5 +59,17 @@
       <summary>Eye animation type</summary>
       <description>Which eye animation to use for the blink reminder overlay.</description>
     </key>
+
+    <key name="notification-enabled" type="b">
+      <default>true</default>
+      <summary>Enable notification reminder</summary>
+      <description>Whether to send GNOME notifications reminding you to look away from the screen.</description>
+    </key>
+
+    <key name="notification-interval" type="d">
+      <default>20.0</default>
+      <summary>Notification interval</summary>
+      <description>How often to send the notification reminder, in minutes.</description>
+    </key>
   </schema>
 </schemalist>
